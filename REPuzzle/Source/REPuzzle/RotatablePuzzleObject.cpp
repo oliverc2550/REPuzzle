@@ -14,22 +14,9 @@ ARotatablePuzzleObject::ARotatablePuzzleObject()
 
 	StaticMesh = CreateDefaultSubobject<UStaticMeshComponent>( TEXT( "Mesh" ) );
 	RootComponent = StaticMesh;
-	StaticMesh->SetMaterial( 0, NonHightLightedMaterial );
 
+	HasRotationSteppedOnce = false;
 }
-
-//TODO: Fix Stepped Rotation
-//ETriggerEvent ARotatablePuzzleObject::AdjustTriggerEventIfStepped()
-//{
-//	if( ShouldObjectRotationBeStepped )
-//	{
-//		return ETriggerEvent::Completed;
-//	}
-//	else
-//	{
-//		return ETriggerEvent::Triggered;
-//	}
-//}
 
 void ARotatablePuzzleObject::SetupPuzzleInput()
 {
@@ -39,11 +26,13 @@ void ARotatablePuzzleObject::SetupPuzzleInput()
 	// Set up action bindings
 	if( UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>( InputComponent ) )
 	{
-		EnhancedInputComponent->BindAction( StopInteractingAction, ETriggerEvent::Triggered, this, &ARotatablePuzzleObject::StopInteracting );
-		EnhancedInputComponent->BindAction( CheckPuzzleSolutionAction, ETriggerEvent::Completed, this, &ARotatablePuzzleObject::SolvePuzzle );
+		EnhancedInputComponent->BindAction( StopSolvingAction, ETriggerEvent::Triggered, this, &ARotatablePuzzleObject::StopSolving );
+		EnhancedInputComponent->BindAction( CheckPuzzleSolutionAction, ETriggerEvent::Completed, this, &ARotatablePuzzleObject::TryToSolvePuzzle );
 
 		EnhancedInputComponent->BindAction( RotateXYAction, ETriggerEvent::Triggered, this, &ARotatablePuzzleObject::RotateXY );
+		EnhancedInputComponent->BindAction( RotateXYAction, ETriggerEvent::Completed, this, &ARotatablePuzzleObject::ResetRotationStepBool );
 		EnhancedInputComponent->BindAction( RotateZAction, ETriggerEvent::Triggered, this, &ARotatablePuzzleObject::RotateZ );
+		EnhancedInputComponent->BindAction( RotateZAction, ETriggerEvent::Completed, this, &ARotatablePuzzleObject::ResetRotationStepBool );
 	}
 
 	DisableInput( GetWorld()->GetFirstPlayerController() );
@@ -75,54 +64,37 @@ bool ARotatablePuzzleObject::DoesCurrentRotationMatchSolutionRotation()
 	return Maths::Rotator::EqualsWithinPercentTolerence( GetActorRotation(), PuzzleSolutionRotationValue, PuzzleSolutionPercentTolerance );
 }
 
-void ARotatablePuzzleObject::SolvePuzzle()
+void ARotatablePuzzleObject::TryToSolvePuzzle()
 {
 	if( DoesCurrentRotationMatchSolutionRotation() )
 	{
 		PuzzleHasBeenSolvedDelegate.Broadcast();
-		StopInteracting();
 	}
 }
 
-void ARotatablePuzzleObject::Interact_Implementation()
+void ARotatablePuzzleObject::StopSolving()
 {
-	if( APlayerController* playerController = GetWorld()->GetFirstPlayerController() )
-	{
-		EnableInput( playerController );
-	}
-}
-
-void ARotatablePuzzleObject::StopInteracting()
-{
-	if( APlayerController* playerController = GetWorld()->GetFirstPlayerController() )
-	{
-		DisableInput( playerController );
-		if( APawn* playerPawn = playerController->GetPawn() )
-		{
-			playerPawn->EnableInput( playerController );
-		}
-	}
-}
-
-void ARotatablePuzzleObject::HighlightActor_Implementation()
-{
-	StaticMesh->SetMaterial(0, HightLightedMaterial);
-}
-
-void ARotatablePuzzleObject::StopHighlightingActor_Implementation()
-{
-	StaticMesh->SetMaterial( 0, NonHightLightedMaterial );
+	StopAttemptingPuzzleDelegate.Broadcast();
 }
 
 FRotator ARotatablePuzzleObject::MakeMovementRotatorSteppedOrContinual( double y, double x, double z )
 {
-	//TODO: Fix Stepped Rotation
-	//if( ShouldObjectRotationBeStepped )
-	//{
-	//	//Due to Stepped Rotation using ETriggerEvent::Completed any passed in y, x or z values will be zero. Need to figure out how to get proper values.
-	//	return FRotator( ( y * -ObjectSteppedRotationRate ), ( x * -ObjectSteppedRotationRate ), ( z * ObjectSteppedRotationRate ) );
-	//}
-	return FRotator( ( y * -ObjectContinualRotationRate ), ( x * -ObjectContinualRotationRate ), ( z * ObjectContinualRotationRate ) );
+	if( ShouldObjectRotationBeStepped )
+	{
+		if( !HasRotationSteppedOnce )
+		{
+			HasRotationSteppedOnce = true;
+			return FRotator( ( y * -ObjectSteppedRotationRate ), ( x * -ObjectSteppedRotationRate ), ( z * ObjectSteppedRotationRate ) );
+		}
+		else
+		{
+			return FRotator( 0.0 );
+		}
+	}
+	else
+	{
+		return FRotator( ( y * -ObjectContinualRotationRate ), ( x * -ObjectContinualRotationRate ), ( z * ObjectContinualRotationRate ) );
+	}
 }
 
 void ARotatablePuzzleObject::RotateMeshComponent( double y, double x, double z )
@@ -140,7 +112,7 @@ void ARotatablePuzzleObject::RotateXY( const FInputActionValue& Value )
 
 	if( CheckIfSolvedAfterEveryMove )
 	{
-		SolvePuzzle();
+		TryToSolvePuzzle();
 	}
 }
 
@@ -152,6 +124,11 @@ void ARotatablePuzzleObject::RotateZ( const FInputActionValue& Value )
 
 	if( CheckIfSolvedAfterEveryMove )
 	{
-		SolvePuzzle();
+		TryToSolvePuzzle();
 	}
+}
+
+void ARotatablePuzzleObject::ResetRotationStepBool()
+{
+	HasRotationSteppedOnce = false;
 }

@@ -4,15 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Interactable.h"
 #include "InputActionValue.h"
 #include "InputTriggers.h"
 #include "RotatablePuzzleObject.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE( FPuzzleHasBeenSolved );
+DECLARE_MULTICAST_DELEGATE( FStopAttemptingPuzzle );
 
 UCLASS()
-class REPUZZLE_API ARotatablePuzzleObject : public AActor, public IInteractable
+class REPUZZLE_API ARotatablePuzzleObject : public AActor
 {
 	GENERATED_BODY()
 	
@@ -21,9 +21,6 @@ public:
 	ARotatablePuzzleObject();
 
 protected:
-	//TODO: Fix Stepped Rotation
-	//ETriggerEvent AdjustTriggerEventIfStepped();
-
 	void SetupPuzzleInput();
 
 	// Called when the game starts or when spawned
@@ -31,15 +28,9 @@ protected:
 
 	bool DoesCurrentRotationMatchSolutionRotation();
 
-	void SolvePuzzle();
+	void TryToSolvePuzzle();
 
-	virtual void Interact_Implementation() override;
-
-	virtual void StopInteracting() override;
-
-	virtual void HighlightActor_Implementation() override;
-
-	virtual void StopHighlightingActor_Implementation() override;
+	void StopSolving();
 
 	FRotator MakeMovementRotatorSteppedOrContinual( double y, double x, double z );
 
@@ -49,9 +40,13 @@ protected:
 
 	void RotateZ( const FInputActionValue& Value );
 
+	void ResetRotationStepBool();
+
 public:
 	UPROPERTY( BlueprintAssignable, Category="Puzzle Object")
 	FPuzzleHasBeenSolved PuzzleHasBeenSolvedDelegate;
+
+	FStopAttemptingPuzzle StopAttemptingPuzzleDelegate;
 
 protected:
 	UPROPERTY( VisibleAnywhere, BlueprintReadOnly, Category = "Components" )
@@ -61,7 +56,7 @@ protected:
 	class UInputMappingContext* PuzzleRotationMappingContext;
 
 	UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = Input, meta = ( AllowPrivateAccess = "true" ) )
-	class UInputAction* StopInteractingAction;
+	class UInputAction* StopSolvingAction;
 
 	UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = Input, meta = ( AllowPrivateAccess = "true" ) )
 	class UInputAction* CheckPuzzleSolutionAction;
@@ -71,12 +66,6 @@ protected:
 
 	UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = Input, meta = ( AllowPrivateAccess = "true" ) )
 	class UInputAction* RotateZAction;
-
-	UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "Materials" )
-	class UMaterialInstance* NonHightLightedMaterial;
-
-	UPROPERTY( EditAnywhere, BlueprintReadOnly, Category = "Materials" )
-	class UMaterialInstance* HightLightedMaterial;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin=0.5, ClampMax=10), Category = "Rotation Properties")
 	double PuzzleSolutionPercentTolerance;
@@ -90,11 +79,11 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = ( ClampMin = 1.0, ClampMax = 90.0 ), Category = "Rotation Properties" )
 	double ObjectSteppedRotationRate;
 
-	//TODO: Solve how to get input value from ETriggerEvent::Completed Bindings
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation Properties")
-	//bool ShouldObjectRotationBeStepped = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rotation Properties")
+	bool ShouldObjectRotationBeStepped = false;
+
+	bool HasRotationSteppedOnce;
 
 	UPROPERTY( EditAnywhere, BlueprintReadWrite, Category = "Puzzle Properties" )
 	bool CheckIfSolvedAfterEveryMove;
-
 };
